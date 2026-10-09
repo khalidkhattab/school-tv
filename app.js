@@ -502,6 +502,10 @@ function updateTimeline(t, st) {
 const ytId = u => (String(u).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/) || [])[1];
 function kindOf(c) {
   const url = c.image || c.media || c.url || '', ty = (c.type || '').toLowerCase();
+  if (ty === 'video' && url) {
+    if (/youtu/.test(url) && ytId(url)) return 'youtube';           // a YouTube link marked "video"
+    if (/drive\.google\.com/.test(url) && driveId(url)) return 'drivevideo';
+  }
   if (['image', 'video', 'youtube', 'drive', 'iframe', 'text'].includes(ty) && (ty === 'text' || url)) return ty;
   if (!url) return 'text';
   if (ytId(url) && /youtu/.test(url)) return 'youtube';
@@ -525,13 +529,29 @@ function buildCarousel() {
   $('#dots').innerHTML = list.map(() => '<i></i>').join('');
   showCard(0);
 }
+let ytApi;
+function loadYT() {
+  return ytApi || (ytApi = new Promise((res, rej) => {
+    if (window.YT && window.YT.Player) return res();
+    window.onYouTubeIframeAPIReady = res;
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.onerror = rej; document.head.append(s);
+    setTimeout(() => rej(new Error('YouTube API timeout')), 10000);
+  }).catch(e => { ytApi = null; throw e; }));
+}
 function showCard(i) {
   const L = CA.list; if (!L.length) return;
   i = (i + L.length) % L.length; CA.i = i;
   const c = L[i], kind = kindOf(c), url = c.image || c.media || c.url || '';
-  const dur = Math.max(4, +unAr(c.duration || '') || +cfg.defaultDuration || 12);
+  const explicit = +unAr(c.duration || '') || 0;           // a duration typed in the sheet always wins
+  const dur = Math.max(4, explicit || +cfg.defaultDuration || 12);
   const old = CA.cur;
   const sl = document.createElement('div'); sl.className = 'slide';
+  const advance = () => {
+    if (CA.cur !== sl) return;
+    if (CA.list.length > 1) showCard(CA.i + 1);
+    else { const v = $('video', sl); if (v) { v.currentTime = 0; v.play().catch(() => { }); } }
+  };
+  clearTimeout(CA.cap);
   const cap = (c.title || c.content) && kind !== 'text'
     ? `<div class="cap">${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.content ? `<p>${esc(c.content)}</p>` : ''}</div>` : '';
   const fallbackText = () => { sl.className = 'slide txt on'; sl.innerHTML = textSlide(c); };
@@ -540,16 +560,49 @@ function showCard(i) {
     const u = imgUrl(url);
     sl.innerHTML = `<div class="bgblur" style="background-image:url('${u.replace(/'/g, '%27')}')"></div><img class="main" alt="">${cap}`;
     const im = $('img', sl); im.onerror = fallbackText; im.src = u;
-  } else if (kind === 'video') {
+  } else if (kind === 'video' || kind === 'drivevideo') {
+    const dId = kind === 'drivevideo' ? driveId(url) : null;
+    const src = dId ? `https://drive.google.com/uc?export=download&id=${dId}` : url;
     sl.innerHTML = `<video muted autoplay playsinline></video>${cap}`;
     const v = $('video', sl); CA.video = true;
-    v.onended = () => { if (CA.list.length > 1) showCard(CA.i + 1); else { v.currentTime = 0; v.play().catch(() => { }); } };
-    v.onerror = () => { CA.video = false; CA.end = Date.now() + 3000; CA.total = 3; };
-    v.ontimeupdate = () => { if (isFinite(v.duration)) { CA.total = v.duration; CA.end = Date.now() + (v.duration - v.currentTime) * 1000; } };
-    v.src = url; v.play().catch(() => { });
+    const giveUp = () => {
+      if (CA.cur !== sl) return;
+      if (dId && !sl.dataset.fb) { // Drive blocks direct streaming of big files: use its own player instead
+        sl.dataset.fb = 1; v.remove(); sl.insertAdjacentHTML('afterbegin', `<iframe allow="autoplay" src="https://drive.google.com/file/d/${dId}/preview"></iframe>`);
+        CA.video = false; CA.total = dur; CA.end = Date.now() + dur * 1000; return;
+      }
+      CA.video = false; CA.total = 2; CA.end = Date.now() + 2000; // skip a video that cannot play
+    };
+    v.onended = () => advance();
+    v.onerror = giveUp;
+    v.ontimeupdate = () => { if (CA.video && isFinite(v.duration)) { CA.total = v.duration; CA.end = Date.now() + (v.duration - v.currentTime) * 1000; } };
+    v.src = src; v.play().catch(() => { });
+    setTimeout(() => { if (CA.cur === sl && CA.video && (v.readyState < 2 || (v.paused && v.currentTime === 0))) giveUp(); }, 12000);
   } else if (kind === 'youtube') {
-    const id = ytId(url);
-    sl.innerHTML = `<iframe allow="autoplay; encrypted-media" src="https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&rel=0&modestbranding=1"></iframe>${cap}`;
+    const id = ytId(url), box = document.createElement('div'), mount = document.createElement('div');
+    sl.innerHTML = cap; box.className = 'ytbox'; box.append(mount); sl.prepend(box);
+    const plain = () => { if (CA.cur !== sl) return; box.innerHTML = `<iframe allow="autoplay; encrypted-media" src="https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1"></iframe>`; };
+    loadYT().then(() => {
+      if (CA.cur !== sl) return;
+      let started = false;
+      new YT.Player(mount, {
+        videoId: id, width: '100%', height: '100%',
+        playerVars: { autoplay: 1, mute: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3 },
+        events: {
+          onReady: e => { e.target.mute(); e.target.playVideo(); },
+          onStateChange: e => {
+            if (CA.cur !== sl) return;
+            if (e.data === 1 && !started) { // playing: follow the real length unless the sheet sets a duration
+              started = true;
+              const d = e.target.getDuration();
+              if (!explicit && d > 0) { CA.total = d; CA.end = Date.now() + (d - e.target.getCurrentTime() + 2) * 1000; }
+            }
+            if (e.data === 0) { if (CA.list.length > 1) advance(); else { e.target.seekTo(0); e.target.playVideo(); CA.end = Date.now() + CA.total * 1000; } }
+          },
+          onError: () => { CA.end = Date.now() + 2000; CA.total = 2; }, // not embeddable: skip
+        },
+      });
+    }).catch(plain);
   } else if (kind === 'drive') {
     const id = driveId(url);
     sl.innerHTML = `<iframe allow="autoplay" src="${id ? `https://drive.google.com/file/d/${id}/preview` : esc(url)}"></iframe>${cap}`;
@@ -558,9 +611,13 @@ function showCard(i) {
   } else { sl.classList.add('txt'); sl.innerHTML = textSlide(c); }
 
   $('#slides').append(sl);
+  const vv = $('video', sl);   // start playback only once the element is in the page (autoplay can silently fail before)
+  if (vv) { const go = () => vv.play().catch(() => { }); go(); vv.addEventListener('canplay', go, { once: true }); setTimeout(go, 3000); }
   requestAnimationFrame(() => requestAnimationFrame(() => sl.classList.add('on')));
   if (old) { old.classList.remove('on'); setTimeout(() => { old.querySelector('video')?.pause(); old.remove(); }, 1000); }
-  CA.cur = sl; CA.total = dur; CA.end = CA.video ? Infinity : Date.now() + dur * 1000;
+  const wait = kind === 'youtube' && !explicit ? 25 : dur;   // give the YouTube player time to start
+  CA.cur = sl; CA.total = wait; CA.end = CA.video ? Infinity : Date.now() + wait * 1000;
+  if (explicit && (kind === 'video' || kind === 'drivevideo')) CA.cap = setTimeout(advance, explicit * 1000);
   $$('#dots i').forEach((d, k) => d.classList.toggle('on', k === i));
   $('#cdBadge').style.visibility = L.length > 1 || kind === 'video' ? 'visible' : 'hidden';
 }

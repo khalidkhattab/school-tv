@@ -379,3 +379,6 @@ body[data-layout="orchestra"][data-mode="regular"] .bar i { background: var(--go
 body[data-layout="orchestra"][data-mode="regular"] .st-next { font-size: 1.5rem; margin-top: 1rem; }
 body[data-layout="orchestra"][data-mode="regular"] .status[data-urgency="warn"] .st-cd { color: var(--warn); text-shadow: 0 0 3rem var(--warn); }
 body[data-layout="orchestra"][data-mode="regular"] .status[data-urgency="danger"] .st-cd { color: #ff6b6b; }
+
+.ytbox, .ytbox iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.ytbox { background: #000; }
