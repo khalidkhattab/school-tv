@@ -560,16 +560,24 @@ function showCard(i) {
     const u = imgUrl(url);
     sl.innerHTML = `<div class="bgblur" style="background-image:url('${u.replace(/'/g, '%27')}')"></div><img class="main" alt="">${cap}`;
     const im = $('img', sl); im.onerror = fallbackText; im.src = u;
-  } else if (kind === 'video' || kind === 'drivevideo') {
-    const dId = kind === 'drivevideo' ? driveId(url) : null;
-    const src = dId ? `https://drive.google.com/uc?export=download&id=${dId}` : url;
-    sl.innerHTML = `<video muted autoplay playsinline></video>${cap}`;
+  } else if (kind === 'video' || kind === 'drivevideo' || (kind === 'drive' && driveId(url))) {
+    // Drive links are streamed straight into <video> so they autoplay (the Drive player never does)
+    const dId = kind === 'video' ? null : driveId(url);
+    const src = dId ? `https://drive.usercontent.google.com/download?id=${dId}&export=download&confirm=t` : url;
+    sl.innerHTML = `<video muted autoplay playsinline preload="auto"></video>${cap}`;
     const v = $('video', sl); CA.video = true;
     const giveUp = () => {
       if (CA.cur !== sl) return;
-      if (dId && !sl.dataset.fb) { // Drive blocks direct streaming of big files: use its own player instead
-        sl.dataset.fb = 1; v.remove(); sl.insertAdjacentHTML('afterbegin', `<iframe allow="autoplay" src="https://drive.google.com/file/d/${dId}/preview"></iframe>`);
-        CA.video = false; CA.total = dur; CA.end = Date.now() + dur * 1000; return;
+      if (dId && !sl.dataset.fb) {
+        sl.dataset.fb = 1; v.remove();
+        CA.video = false; CA.total = dur; CA.end = Date.now() + dur * 1000;
+        const preview = () => sl.insertAdjacentHTML('afterbegin', `<iframe allow="autoplay" src="https://drive.google.com/file/d/${dId}/preview"></iframe>`);
+        if (kind === 'drive') { // not a playable video: maybe the file is a picture, otherwise use Drive's own viewer
+          const u = imgUrl(url);
+          sl.insertAdjacentHTML('afterbegin', `<div class="bgblur" style="background-image:url('${u}')"></div><img class="main" alt="">`);
+          const im = $('img', sl); im.onerror = () => { im.remove(); $('.bgblur', sl)?.remove(); preview(); }; im.src = u;
+        } else preview();
+        return;
       }
       CA.video = false; CA.total = 2; CA.end = Date.now() + 2000; // skip a video that cannot play
     };
