@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شاشة المدرسة الذكية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="royal">
+
+<div id="bg" aria-hidden="true">
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+  <div class="pat"></div>
+  <div id="particles"></div>
+</div>
+
+<div id="app">
+
+  <!-- ===== الترويسة ===== -->
+  <header id="header" class="glass">
+    <div class="brand">
+      <div id="logo" class="logo">
+        <svg viewBox="0 0 64 64" aria-label="شعار المدرسة">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffe29a"/><stop offset="1" stop-color="#d98a00"/>
+            </linearGradient>
+          </defs>
+          <path d="M32 3 57 12v18c0 15-10 26-25 31C17 56 7 45 7 30V12z" fill="none" stroke="url(#lg)" stroke-width="3"/>
+          <path d="M32 20c-5-3-11-3-16-1v21c5-2 11-2 16 1 5-3 11-3 16-1V19c-5-2-11-2-16 1z" fill="url(#lg)"/>
+          <path d="M32 20v21" stroke="#12072b" stroke-width="2"/>
+          <path d="m32 8 2 4 4 .6-3 3 .7 4.2L32 17.800l-3.700 2 .7-4.200-3-3 4-.6z" fill="url(#lg)" transform="translate(0 -4) scale(1)"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h1 id="schoolName">مدرسة النور النموذجية</h1>
+        <p id="stageName">المرحلة الابتدائية</p>
+      </div>
+    </div>
+
+    <div class="clock" aria-live="off">
+      <div class="clock-time" dir="ltr"><span id="clkHM">٠٠:٠٠</span><small id="clkS">٠٠</small><em id="clkAP">ص</em></div>
+      <div class="clock-date"><b id="clkDay">—</b><span id="clkDate">—</span></div>
+    </div>
+
+    <div class="tools">
+      <div id="weather" class="chip" title="الطقس">
+        <span id="wIcon">⛅</span>
+        <span class="w-t"><b id="wTemp">--°</b><small id="wText">جارٍ التحميل</small></span>
+      </div>
+      <div id="net" class="chip net on" title="حالة الاتصال">
+        <i class="dot"></i><span id="netText">متصل بالإنترنت</span>
+      </div>
+      <button id="btnAudio" class="icon-btn" title="الصوت (M)" aria-label="تفعيل أو كتم الصوت">🔔</button>
+      <button id="btnLayout" class="icon-btn" title="تبديل التصميم (L)" aria-label="تبديل التصميم">🎨</button>
+      <button id="btnTheme" class="icon-btn" title="تبديل المظهر (T)" aria-label="تبديل المظهر">🌙</button>
+      <button id="btnSettings" class="icon-btn" title="الإعدادات (S)" aria-label="الإعدادات">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ===== المحتوى ===== -->
+  <main id="main">
+
+    <section id="media" class="glass" aria-label="عارض الوسائط">
+      <div id="slides"></div>
+      <div id="cdBadge" class="cd-badge" aria-hidden="true">
+        <svg viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="19"/><circle id="cdRing" class="rng" cx="22" cy="22" r="19"/></svg>
+        <b id="cdNum">0</b>
+      </div>
+      <div id="dots" class="dots"></div>
+    </section>
+
+    <section id="panel" aria-label="لوحة المتابعة">
+
+      <!-- الوضع العادي -->
+      <div id="mode-regular" class="mode">
+        <div id="status" class="glass status" data-state="idle" data-urgency="">
+          <div class="st-label" id="stLabel">الحصة الحالية</div>
+          <div class="st-icon" id="stIcon">📚</div>
+          <div class="st-title" id="stTitle">—</div>
+          <div class="st-time" id="stTime"></div>
+          <div class="st-cd" id="stCd" dir="ltr">00:00</div>
+          <div class="st-cd-lbl" id="stCdLbl">المتبقي</div>
+          <div class="bar"><i id="stBar"></i></div>
+          <div class="st-next" id="stNext"></div>
+        </div>
+        <div class="glass sched">
+          <h3><span>🗓️</span> جدول اليوم</h3>
+          <ol id="schedList"></ol>
+        </div>
+      </div>
+
+      <!-- وضع الاختبارات -->
+      <div id="mode-exams" class="mode" hidden>
+        <div class="glass pane-head">
+          <h3><span>📝</span> جدول الاختبارات</h3>
+          <div id="examChips" class="chips"></div>
+        </div>
+        <div class="glass exam-wrap"><div id="examTable"></div></div>
+      </div>
+
+      <!-- الوضع الإداري -->
+      <div id="mode-staff" class="mode" hidden>
+        <div class="glass pane-head">
+          <h3><span>👥</span> الفعاليات والمواعيد الإدارية</h3>
+          <small id="staffToday"></small>
+        </div>
+        <div id="staffList" class="staff-list"></div>
+      </div>
+
+    </section>
+  </main>
+
+  <div id="timeline" class="glass" aria-hidden="true"><div id="tlTrack" class="tl-track"></div></div>
+
+  <!-- ===== الشريط الإخباري ===== -->
+  <footer id="ticker" class="glass" aria-label="الشريط الإخباري">
+    <div class="tk-tag"><span>📢</span> إعلانات</div>
+    <div class="tk-view"><div id="tkTrack" class="tk-track"></div></div>
+  </footer>
+</div>
+
+<div id="toast" hidden></div>
+
+<!-- ===== طبقة الطوارئ ===== -->
+<div id="emergency" hidden role="alert">
+  <div class="em-box">
+    <div class="em-icon">🚨</div>
+    <div class="em-title">تنبيه عاجل</div>
+    <div class="em-text" id="emText"></div>
+  </div>
+</div>
+
+<!-- ===== الإعدادات ===== -->
+<aside id="settings" hidden aria-label="الإعدادات">
+  <div class="set-card glass">
+    <div class="set-head"><h2>⚙️ إعدادات الشاشة</h2><button id="setClose" class="icon-btn" aria-label="إغلاق">✕</button></div>
+
+    <label>رابط أو معرّف جدول Google Sheets
+      <input id="f_sheet" type="text" dir="ltr" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+      <small>يجب أن يكون الجدول مشاركاً «لأي شخص لديه الرابط». اتركه فارغاً لعرض بيانات تجريبية.</small>
+    </label>
+
+    <div class="stage-btns">
+      <span>المرحلة:</span>
+      <button data-stage="primary">الابتدائية (١–٥)</button>
+      <button data-stage="middle">المتوسطة (٦–٩)</button>
+      <button data-stage="secondary">الثانوية (١٠–١٢)</button>
+    </div>
+
+    <div class="grid2">
+      <label>اسم المدرسة<input id="f_school" type="text"></label>
+      <label>اسم المرحلة (اختياري)<input id="f_stageName" type="text"></label>
+      <label>رابط الشعار (Drive / ويب)<input id="f_logo" type="text" dir="ltr"></label>
+      <label>وضع العرض
+        <select id="f_mode"><option value="regular">عادي</option><option value="exams">اختبارات</option><option value="staff">إداري / معلمين</option></select>
+      </label>
+      <label>التصميم
+        <select id="f_layout"><option value="classic">الكلاسيكي</option><option value="mihrab">المحراب الذهبي</option><option value="path">مسار اليوم</option><option value="orchestra">الأوركسترا</option></select>
+      </label>
+      <label>الثيم
+        <select id="f_theme"><option value="royal">ملكي داكن</option><option value="sapphire">ياقوتي</option><option value="emerald">زمردي</option><option value="light">فاتح</option></select>
+      </label>
+      <label>أيام الإجازة (0=الأحد … 6=السبت)<input id="f_weekend" type="text" dir="ltr"></label>
+      <label>خط العرض (الطقس)<input id="f_lat" type="text" dir="ltr"></label>
+      <label>خط الطول (الطقس)<input id="f_lon" type="text" dir="ltr"></label>
+      <label>تكرار جرس الحصص (١–٢٠ مرة)<input id="f_bell" type="number" min="1" max="20" dir="ltr"></label>
+      <label>التحديث كل (ثانية)<input id="f_poll" type="number" min="15" dir="ltr"></label>
+    </div>
+
+    <div class="set-actions">
+      <button id="setSave" class="primary">حفظ وتطبيق</button>
+      <button id="setBell">جرّب الجرس</button>
+      <button id="setEmerg">تجربة الطوارئ</button>
+      <button id="setFull">ملء الشاشة (F)</button>
+      <button id="setReset" class="danger">إعادة الضبط</button>
+    </div>
+    <small class="hint">اختصارات: S الإعدادات · F ملء الشاشة · M كتم الصوت · T المظهر · ١ ٢ ٣ المراحل</small>
+  </div>
+</aside>
+
+<script src="app.js"></script>
+</body>
+</html>
