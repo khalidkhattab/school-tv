@@ -74,12 +74,12 @@ const LAYOUTS = { classic: 'الكلاسيكي', mihrab: 'المحراب الذ�
 const DEFAULTS = {
   sheetId: '', stage: 'primary', theme: 'royal', layout: 'classic', schoolName: 'مدرسة النور النموذجية', stageName: '',
   logoUrl: '', displayMode: 'regular', lat: 24.7136, lon: 46.6753, weekend: '5,6', pollSec: 60,
-  defaultDuration: 12, sound: true, bellRepeat: 5,
+  defaultDuration: 12, sound: true, videoSound: true, bellRepeat: 5,
 };
 const REMOTE_KEYS = {
   school_name: 'schoolName', stage_name: 'stageName', logo: 'logoUrl', display_mode: 'displayMode',
   theme: 'theme', layout: 'layout', stage: 'stage', lat: 'lat', lon: 'lon', weekend: 'weekend',
-  default_duration: 'defaultDuration', bell_repeat: 'bellRepeat', poll_seconds: 'pollSec', sheet_id: null,
+  default_duration: 'defaultDuration', bell_repeat: 'bellRepeat', video_sound: 'videoSound', poll_seconds: 'pollSec', sheet_id: null,
 };
 let local = store.get('sds.cfg', {});
 let remote = store.get('sds.remote', {});
@@ -93,6 +93,7 @@ function mergeCfg() {
   const qs = new URLSearchParams(location.search).get('sheet');
   if (qs) cfg.sheetId = qs;
   cfg.sound = local.sound ?? true;
+  cfg.videoSound = !/^(false|0|no|لا|off)$/i.test(String(remote.videoSound ?? local.videoSound ?? true));
   if (!['regular', 'exams', 'staff'].includes(cfg.displayMode)) cfg.displayMode = 'regular';
 }
 
@@ -551,7 +552,7 @@ function showCard(i) {
     if (CA.list.length > 1) showCard(CA.i + 1);
     else { const v = $('video', sl); if (v) { v.currentTime = 0; v.play().catch(() => { }); } }
   };
-  clearTimeout(CA.cap);
+  clearTimeout(CA.cap); CA.yt = null;
   const cap = (c.title || c.content) && kind !== 'text'
     ? `<div class="cap">${c.title ? `<h2>${esc(c.title)}</h2>` : ''}${c.content ? `<p>${esc(c.content)}</p>` : ''}</div>` : '';
   const fallbackText = () => { sl.className = 'slide txt on'; sl.innerHTML = textSlide(c); };
@@ -597,11 +598,15 @@ function showCard(i) {
         videoId: id, width: '100%', height: '100%',
         playerVars: { autoplay: 1, mute: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3 },
         events: {
-          onReady: e => { e.target.mute(); e.target.playVideo(); },
+          onReady: e => { CA.yt = e.target; e.target.mute(); e.target.playVideo(); },
           onStateChange: e => {
             if (CA.cur !== sl) return;
             if (e.data === 1 && !started) { // playing: follow the real length unless the sheet sets a duration
               started = true;
+              if (cfg.videoSound) {   // YouTube starts muted (allowed); then ask for sound and keep it only if the browser allows
+                e.target.unMute(); e.target.setVolume(100);
+                setTimeout(() => { if (CA.cur === sl && e.target.getPlayerState() !== 1) { e.target.mute(); e.target.playVideo(); } }, 900);
+              }
               const d = e.target.getDuration();
               if (!explicit && d > 0) { CA.total = d; CA.end = Date.now() + (d - e.target.getCurrentTime() + 2) * 1000; }
             }
@@ -620,7 +625,14 @@ function showCard(i) {
 
   $('#slides').append(sl);
   const vv = $('video', sl);   // start playback only once the element is in the page (autoplay can silently fail before)
-  if (vv) { const go = () => vv.play().catch(() => { }); go(); vv.addEventListener('canplay', go, { once: true }); setTimeout(go, 3000); }
+  if (vv) {
+    // try with sound first; browsers refuse unmuted autoplay until the page has been touched, so fall back to muted
+    const go = () => {
+      vv.muted = !cfg.videoSound || !!vv.dataset.forcedMute;
+      return vv.play().catch(() => { if (!vv.muted) { vv.muted = true; vv.dataset.forcedMute = 1; return vv.play().catch(() => { }); } });
+    };
+    go(); vv.addEventListener('canplay', go, { once: true }); setTimeout(go, 3000);
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => sl.classList.add('on')));
   if (old) { old.classList.remove('on'); setTimeout(() => { old.querySelector('video')?.pause(); old.remove(); }, 1000); }
   const wait = kind === 'youtube' && !explicit ? 25 : dur;   // give the YouTube player time to start
@@ -807,7 +819,12 @@ function updateAudioBtn() {
   b.classList.toggle('locked', cfg.sound && Sound.isLocked());
   b.title = cfg.sound && Sound.isLocked() ? 'اضغط في أي مكان لتفعيل الصوت' : 'الصوت (M)';
 }
-['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { Sound.unlock(); setTimeout(updateAudioBtn, 100); }, { passive: true }));
+function unmuteVideos() {   // after any tap/key the browser allows sound: switch the playing video on
+  if (!cfg.videoSound) return;
+  $('#slides video').forEach(v => { v.muted = false; delete v.dataset.forcedMute; });
+  try { if (CA.yt) { CA.yt.unMute(); CA.yt.setVolume(100); } } catch { }
+}
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { Sound.unlock(); setTimeout(updateAudioBtn, 100); unmuteVideos(); }, { passive: true }));
 
 /* ===================================================================== */
 /*                          SETTINGS / CONTROLS                          */
@@ -816,7 +833,7 @@ const F = id => $('#f_' + id);
 function openSettings() {
   F('sheet').value = local.sheetId || ''; F('school').value = cfg.schoolName; F('stageName').value = cfg.stageName || '';
   F('logo').value = cfg.logoUrl || ''; F('mode').value = cfg.displayMode; F('theme').value = cfg.theme; F('layout').value = cfg.layout;
-  F('weekend').value = cfg.weekend; F('lat').value = cfg.lat; F('lon').value = cfg.lon; F('poll').value = cfg.pollSec; F('bell').value = cfg.bellRepeat;
+  F('weekend').value = cfg.weekend; F('lat').value = cfg.lat; F('lon').value = cfg.lon; F('poll').value = cfg.pollSec; F('bell').value = cfg.bellRepeat; F('vsound').checked = cfg.videoSound;
   markStage(cfg.stage); $('#settings').hidden = false;
 }
 const markStage = s => $$('.stage-btns button').forEach(b => b.classList.toggle('on', b.dataset.stage === s));
@@ -826,7 +843,7 @@ function saveSettings() {
     ...local, sheetId: F('sheet').value.trim(), schoolName: F('school').value.trim() || DEFAULTS.schoolName, stageName: F('stageName').value.trim(),
     logoUrl: F('logo').value.trim(), displayMode: F('mode').value, theme: F('theme').value, themeManual: true, layout: F('layout').value, layoutManual: true,
     weekend: F('weekend').value.trim() || DEFAULTS.weekend, lat: +F('lat').value || DEFAULTS.lat, lon: +F('lon').value || DEFAULTS.lon,
-    pollSec: Math.max(15, +F('poll').value || 60), bellRepeat: Math.min(20, Math.max(1, Math.round(+F('bell').value) || 5)), stage: pendingStage || cfg.stage,
+    pollSec: Math.max(15, +F('poll').value || 60), videoSound: F('vsound').checked, bellRepeat: Math.min(20, Math.max(1, Math.round(+F('bell').value) || 5)), stage: pendingStage || cfg.stage,
   };
   pendingStage = null; store.set('sds.cfg', local); mergeCfg(); $('#settings').hidden = true; refreshData();
 }
